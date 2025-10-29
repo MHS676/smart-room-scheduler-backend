@@ -8,20 +8,19 @@ datasource db {
 }
 
 model User {
-  id        String   @id @default(cuid())
+  id        String    @id @default(cuid())
   name      String
-  email     String   @unique
-  password  String?         // nullable for seeded/SSO users; required for local auth
-  role      Role     @default(EMPLOYEE)
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  email     String    @unique
+  password  String?
+  role      Role      @default(EMPLOYEE)
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
   bookings  Booking[] @relation("OrganizerBookings")
 }
 
-
 model MeetingRoom {
   id         String    @id @default(cuid())
-  name       String     @unique
+  name       String    @unique
   capacity   Int
   equipment  String[]  @default([])
   hourlyRate Float
@@ -32,25 +31,38 @@ model MeetingRoom {
 }
 
 model Booking {
-  id               String    @id @default(cuid())
-  organizerId      String
-  organizer        User      @relation(fields: [organizerId], references: [id], name: "OrganizerBookings")
-  roomId           String?
-  room             MeetingRoom? @relation(fields: [roomId], references: [id])
-  attendees        String[]   @default([])
-  duration         Int        // minutes
-  requiredEquipment String[]  @default([])
-  preferredStart   DateTime
-  actualStart      DateTime?
-  startTime        DateTime?  // scheduled start
-  endTime          DateTime?  // scheduled end
-  flexibility      Int        // minutes
-  priority         Priority   @default(NORMAL)
-  status           BookingStatus @default(PENDING)
-  cost             Float?
-  createdAt        DateTime   @default(now())
-  updatedAt        DateTime   @updatedAt
-  autoReleaseAt    DateTime?
+  id                String        @id @default(cuid())
+  organizerId       String
+  organizer         User          @relation(fields: [organizerId], references: [id], name: "OrganizerBookings")
+  roomId            String?
+  room              MeetingRoom?  @relation(fields: [roomId], references: [id])
+  attendees         String[]      @default([])
+  duration          Int // minutes
+  requiredEquipment String[]      @default([])
+  preferredStart    DateTime
+  actualStart       DateTime?
+  startTime         DateTime? // scheduled start
+  endTime           DateTime? // scheduled end
+  flexibility       Int // minutes
+  priority          Priority      @default(NORMAL)
+  status            BookingStatus @default(PENDING)
+  cost              Float?
+  createdAt         DateTime      @default(now())
+  updatedAt         DateTime      @updatedAt
+  autoReleaseAt     DateTime?
+  Ticket            Ticket?       @relation(fields: [ticketId], references: [id])
+  ticketId          String?
+}
+
+model Ticket {
+  id        String   @id @default(uuid())
+  title     String
+  price     Float
+  quantity  Int
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  Bookings Booking[]
 }
 
 enum Role {

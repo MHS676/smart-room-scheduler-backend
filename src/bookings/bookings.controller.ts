@@ -1,46 +1,61 @@
-import { Controller, Post, Body, UseGuards, Request, Get, Query, Param, Patch } from '@nestjs/common';
+import { Controller, Get, Post, Body, Param, Query, Patch, UseGuards, Req } from '@nestjs/common';
 import { BookingsService } from './bookings.service';
-import { CreateBookingDto } from './dto/create-booking.dto';
 import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
+import { RolesGuard } from '../common/guards/roles.guard';
+import { Roles } from '../common/decorators/roles.decorator';
 
 @Controller('bookings')
+@UseGuards(JwtAuthGuard, RolesGuard)
 export class BookingsController {
-  constructor(private svc: BookingsService) { }
+  constructor(private readonly bookingsService: BookingsService) { }
 
-  // create booking (protected)
-  @UseGuards(JwtAuthGuard)
-  @Post()
-  async create(@Body() dto: CreateBookingDto, @Request() req) {
-    if (!dto.organizerId) dto.organizerId = req.user.userId;
-    return this.svc.createBooking(dto);
-  }
-
-  // list bookings (protected)
-  @UseGuards(JwtAuthGuard)
+  // ------------------------------
+  // List all bookings of a user
+  // GET /bookings?from=2025-10-29&to=2025-10-30
   @Get()
-  async list(@Request() req, @Query('from') from?: string, @Query('to') to?: string) {
-    return this.svc.listUserBookings(req.user.userId, from ? new Date(from) : undefined, to ? new Date(to) : undefined);
+  async listUserBookings(@Req() req, @Query('from') from?: string, @Query('to') to?: string) {
+    return this.bookingsService.listUserBookings(req.user.id, from ? new Date(from) : undefined, to ? new Date(to) : undefined);
   }
 
-  // calendar view for admin (role-guard optional in route)
-  @UseGuards(JwtAuthGuard)
+  // ------------------------------
+  // Calendar view grouped by room
+  // GET /bookings/calendar?day=2025-10-29
   @Get('calendar')
-  async calendar(@Query('date') date?: string) {
-    const day = date ? new Date(date) : new Date();
-    return this.svc.calendarView(day);
+  async calendarView(@Query('day') day: string) {
+    return this.bookingsService.calendarView(new Date(day));
   }
 
-  // cancel booking
-  @UseGuards(JwtAuthGuard)
+  // ------------------------------
+  // Create a booking
+  // POST /bookings
+  @Post()
+  async createBooking(@Req() req, @Body() payload: any) {
+    payload.organizerId = req.user.id; // ensure organizer is current user
+    return this.bookingsService.createBooking(payload);
+  }
+
+  // ------------------------------
+  // Cancel a booking
+  // PATCH /bookings/:id/cancel
   @Patch(':id/cancel')
-  async cancel(@Param('id') id: string, @Request() req) {
-    return this.svc.cancelBooking(id, req.user.userId);
+  async cancelBooking(@Param('id') id: string, @Req() req) {
+    return this.bookingsService.cancelBooking(id, req.user.id);
   }
 
-  // check-in to confirm meeting started (prevents auto-release)
-  @UseGuards(JwtAuthGuard)
-  @Post(':id/checkin')
-  async checkin(@Param('id') id: string, @Request() req) {
-    return this.svc.checkIn(id, req.user.userId);
+  // ------------------------------
+  // Check-in for a booking
+  // PATCH /bookings/:id/checkin
+  @Patch(':id/checkin')
+  async checkIn(@Param('id') id: string, @Req() req) {
+    return this.bookingsService.checkIn(id, req.user.id);
+  }
+
+  // ------------------------------
+  // Release unused bookings (optional, can be cron job)
+  // POST /bookings/release-unused
+  @Post('release-unused')
+  @Roles('ADMIN', 'CEO') // Only admin or CEO can trigger manually
+  async releaseUnusedBookings() {
+    return this.bookingsService.releaseUnusedBookings();
   }
 }

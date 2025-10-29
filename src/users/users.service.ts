@@ -1,22 +1,22 @@
 import { Injectable } from '@nestjs/common';
+import { PrismaService } from '../prisma/prisma.service';
+import * as bcrypt from 'bcryptjs';
 
 @Injectable()
-export class UsersService { }
+export class UsersService {
+    constructor(private prisma: PrismaService) { }
 
-async purchase(userId: string) {
-    const lockKey = `lock:user:${userId}`;
-    const lockId = await this.lockService.acquireLock(lockKey, 3000);
-
-    if (!lockId) {
-        throw new Error('Resource busy. Try again.');
+    async findById(id: string) {
+        return this.prisma.user.findUnique({ where: { id } });
     }
 
-    try {
-        // Your protected critical logic
-        return await this.prisma.order.create({
-            data: { userId },
-        });
-    } finally {
-        await this.lockService.releaseLock(lockKey, lockId);
+    async findAll() {
+        return this.prisma.user.findMany();
+    }
+
+    async createUser(name: string, email: string, password?: string, role: string = 'EMPLOYEE') {
+        const data: any = { name, email, role };
+        if (password) data.password = await bcrypt.hash(password, 10);
+        return this.prisma.user.create({ data });
     }
 }

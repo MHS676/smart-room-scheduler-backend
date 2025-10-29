@@ -1,21 +1,28 @@
-import { Inject, Injectable } from '@nestjs/common';
+import { Inject, Injectable, OnModuleDestroy } from '@nestjs/common';
+import Redlock from 'redlock';
 import Redis from 'ioredis';
-import { randomUUID } from 'crypto';
 
 @Injectable()
-export class RedisLockService {
-    constructor(@Inject('REDIS') private readonly redis: Redis) { }
-
-    async acquireLock(key: string, ttl = 5000): Promise<string | null> {
-        const lockId = randomUUID();
-        const result = await this.redis.set(key, lockId, 'NX', 'PX', ttl);
-        return result === 'OK' ? lockId : null;
+export class RedlockService implements OnModuleDestroy {
+    private redlock: Redlock;
+    constructor(@Inject('REDIS') private redis: Redis) {
+        this.redlock = new Redlock(
+            [redis],
+            {
+                retryCount: 6,
+                retryDelay: 200,
+                retryJitter: 100,
+            },
+        );
     }
 
-    async releaseLock(key: string, lockId: string) {
-        const storedId = await this.redis.get(key);
-        if (storedId === lockId) {
-            await this.redis.del(key);
-        }
+    async lock(resource: string, ttl = 5000) {
+        return this.redlock.acquire([resource], ttl);
+    }
+
+    async onModuleDestroy() {
+        try {
+            await this.redis.quit();
+        } catch (e) { }
     }
 }

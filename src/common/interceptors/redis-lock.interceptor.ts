@@ -8,44 +8,32 @@ import {
 import { Reflector } from '@nestjs/core';
 import { Observable, from, switchMap } from 'rxjs';
 import { REDIS_LOCK_RESOURCE } from '../decorators/redis-lock.decorator';
-import { RedlockService } from '../../redis/redlock.service';
+import { RedlockService } from '../../redis/redis-lock.service';
 
 @Injectable()
 export class RedisLockInterceptor implements NestInterceptor {
-    constructor(
-        private readonly reflector: Reflector,
-        private readonly redlockService: RedlockService,
-    ) { }
+    constructor(private reflector: Reflector, private redlockService: RedlockService) { }
 
     intercept(context: ExecutionContext, next: CallHandler): Observable<any> {
-        const field = this.reflector.get<string>(
-            REDIS_LOCK_RESOURCE,
-            context.getHandler(),
-        );
+        const field = this.reflector.get<string>(REDIS_LOCK_RESOURCE, context.getHandler());
+        if (!field) return next.handle();
 
-        if (!field) {
-            return next.handle(); // no lock needed
-        }
+        const req = context.switchToHttp().getRequest();
+        // try body, params, query
+        const key = req.body?.[field] ?? req.params?.[field] ?? req.query?.[field];
+        if (!key) throw new BadRequestException(`Missing lock key field "${field}"`);
 
-        const request = context.switchToHttp().getRequest();
-        const key =
-            request.body?.[field] ||
-            request.params?.[field] ||
-            request.query?.[field];
+        const resource = `locks:${field}:${key}`;
 
-        if (!key) {
-            throw new BadRequestException(
-                `Locking failed: Missing required field "${field}"`,
-            );
-        }
-
-        const lockKey = `lock:${field}:${key}`;
-
-        return from(this.redlockService.lock(lockKey, 3000)).pipe(
+        return from(this.redlockService.lock(resource, 5000)).pipe(
             switchMap(lock =>
                 next.handle().pipe(
-                    switchMap(async result => {
-                        await lock.release();
+                    switchMap(async (result) => {
+                        try {
+                            await lock.release();
+                        } catch (e) {
+                            // ignore release errors
+                        }
                         return result;
                     }),
                 ),

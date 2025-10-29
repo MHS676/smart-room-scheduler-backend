@@ -1,9 +1,12 @@
-import { Module, OnModuleInit } from '@nestjs/common';
-import { BookingsService } from './bookings/bookings.service';
-import { scheduleAutoRelease } from './jobs/cron.jobs';
+import * as cron from 'node-cron';
+import { BookingsService } from '../bookings/bookings.service';
 
-@Module({ ...})
-export class AppModule implements OnModuleInit {
-    constructor(private bookingsService: BookingsService) { }
-    onModuleInit() { scheduleAutoRelease(this.bookingsService); }
+export function scheduleAutoRelease(bookingsService: BookingsService) {
+    cron.schedule('* * * * *', async () => {
+        try {
+            await bookingsService.releaseUnusedBookings();
+        } catch (err) {
+            console.error('Auto-release job error', err);
+        }
+    });
 }

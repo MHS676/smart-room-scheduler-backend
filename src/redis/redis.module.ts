@@ -1,13 +1,17 @@
 import { Module, Global } from '@nestjs/common';
 import Redis from 'ioredis';
-import { RedlockService } from './redlock.service';
+import { RedlockService } from './redis-lock.service';
 
 @Global()
 @Module({
     providers: [
         {
             provide: 'REDIS',
-            useFactory: () => new Redis(process.env.REDIS_URL),
+            useFactory: () => {
+                const url = process.env.REDIS_URL;
+                if (!url) throw new Error('REDIS_URL not set');
+                return new Redis(url);
+            },
         },
         RedlockService,
     ],
