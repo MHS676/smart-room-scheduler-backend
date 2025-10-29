@@ -1,10 +1,21 @@
-import { Module } from '@nestjs/common';
-import { AppController } from './app.controller';
-import { AppService } from './app.service';
+import { Module, OnModuleInit } from '@nestjs/common';
+import { PrismaModule } from './prisma/prisma.module';
+import { AuthModule } from './auth/auth.module';
+import { RoomsModule } from './rooms/rooms.module';
+import { BookingsModule } from './bookings/bookings.module';
+import { EventsModule } from './events/events.module';
+import { BookingsService } from './bookings/bookings.service';
+import { scheduleAutoRelease } from './jobs/cron.jobs';
+
 
 @Module({
-  imports: [],
-  controllers: [AppController],
-  providers: [AppService],
+imports: [PrismaModule, AuthModule, RoomsModule, BookingsModule, EventsModule],
 })
-export class AppModule {}
+export class AppModule implements OnModuleInit {
+constructor(private bookingsService: BookingsService) {}
+
+
+async onModuleInit() {
+scheduleAutoRelease(this.bookingsService);
+}
+}

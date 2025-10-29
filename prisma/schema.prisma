@@ -1,0 +1,76 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id        String   @id @default(cuid())
+  name      String
+  email     String   @unique
+  password  String?         // nullable for seeded/SSO users; required for local auth
+  role      Role     @default(EMPLOYEE)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  bookings  Booking[] @relation("OrganizerBookings")
+}
+
+
+model MeetingRoom {
+  id         String    @id @default(cuid())
+  name       String     @unique
+  capacity   Int
+  equipment  String[]  @default([])
+  hourlyRate Float
+  location   String
+  bookings   Booking[]
+  createdAt  DateTime  @default(now())
+  updatedAt  DateTime  @updatedAt
+}
+
+model Booking {
+  id               String    @id @default(cuid())
+  organizerId      String
+  organizer        User      @relation(fields: [organizerId], references: [id], name: "OrganizerBookings")
+  roomId           String?
+  room             MeetingRoom? @relation(fields: [roomId], references: [id])
+  attendees        String[]   @default([])
+  duration         Int        // minutes
+  requiredEquipment String[]  @default([])
+  preferredStart   DateTime
+  actualStart      DateTime?
+  startTime        DateTime?  // scheduled start
+  endTime          DateTime?  // scheduled end
+  flexibility      Int        // minutes
+  priority         Priority   @default(NORMAL)
+  status           BookingStatus @default(PENDING)
+  cost             Float?
+  createdAt        DateTime   @default(now())
+  updatedAt        DateTime   @updatedAt
+  autoReleaseAt    DateTime?
+}
+
+enum Role {
+  EMPLOYEE
+  ADMIN
+  CEO
+}
+
+enum Priority {
+  LOW
+  NORMAL
+  HIGH
+  URGENT
+}
+
+enum BookingStatus {
+  PENDING
+  SCHEDULED
+  CANCELLED
+  RELEASED
+  COMPLETED
+  NO_SHOW
+}
