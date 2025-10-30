@@ -14,6 +14,6 @@ export class AuthController {
 
   @Post('login')
   async login(@Body() dto: LoginDto) {
-    return this.svc.loginViaCredentials(dto.organizerEmail, dto.password);
+    return this.svc.loginViaCredentials(dto.email, dto.password);
   }
 }

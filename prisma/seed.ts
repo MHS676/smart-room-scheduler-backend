@@ -1,17 +1,23 @@
 import { PrismaClient } from '@prisma/client';
+import * as bcrypt from 'bcryptjs';
+
 const prisma = new PrismaClient();
 
 async function main() {
+  // create CEO user
+  const hashed = await bcrypt.hash('ceo_password_123', 10);
   await prisma.user.upsert({
     where: { email: 'ceo@company.local' },
     update: {},
     create: {
       name: 'CEO',
       email: 'ceo@company.local',
+      password: hashed,
       role: 'CEO',
     },
   });
 
+  // create sample meeting rooms (10 rooms)
   const rooms = [
     { name: 'Room A', capacity: 12, equipment: ['projector','whiteboard'], hourlyRate: 30, location: 'Bldg 1 - 1F' },
     { name: 'Room B', capacity: 8, equipment: ['video-conf','whiteboard'], hourlyRate: 25, location: 'Bldg 1 - 1F' },
@@ -33,11 +39,22 @@ async function main() {
     });
   }
 
-  console.log('Seed done');
+  // create a sample ticket
+  await prisma.ticket.upsert({
+    where: { title: 'Standard Ticket' },
+    update: {},
+    create: {
+      title: 'Standard Ticket',
+      price: 10,
+      quantity: 100,
+    },
+  });
+
+  console.log('Seed complete');
 }
 
 main()
-  .catch(e => {
+  .catch((e) => {
     console.error(e);
     process.exit(1);
   })

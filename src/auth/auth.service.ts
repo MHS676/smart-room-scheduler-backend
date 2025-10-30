@@ -17,7 +17,7 @@ export class AuthService {
     if (exists) throw new Error('User exists');
     const hashed = await bcrypt.hash(password, 10);
     const user = await this.prisma.user.create({ data: { name, email, password: hashed } });
-    return { user: { id: user.id, name: user.name, email: user.email, role: user.role }, access_token: this.signToken(user) };
+    return { user: { id: user.id, name: user.name, email: user.email, role: user.role }, };
   }
 
   async validateUserByPassword(email: string, password: string) {

@@ -11,7 +11,7 @@ model User {
   id        String    @id @default(cuid())
   name      String
   email     String    @unique
-  password  String?
+  password  String? // nullable for SSO or seeded users
   role      Role      @default(EMPLOYEE)
   createdAt DateTime  @default(now())
   updatedAt DateTime  @updatedAt
@@ -50,19 +50,18 @@ model Booking {
   createdAt         DateTime      @default(now())
   updatedAt         DateTime      @updatedAt
   autoReleaseAt     DateTime?
-  Ticket            Ticket?       @relation(fields: [ticketId], references: [id])
   ticketId          String?
+  ticket            Ticket?       @relation(fields: [ticketId], references: [id])
 }
 
 model Ticket {
-  id        String   @id @default(uuid())
-  title     String
+  id        String    @id @default(uuid())
+  title     String    @unique
   price     Float
   quantity  Int
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-
-  Bookings Booking[]
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  bookings  Booking[]
 }
 
 enum Role {
