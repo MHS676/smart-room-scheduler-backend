@@ -30,9 +30,10 @@ export class BookingsController {
   // POST /bookings
   @Post()
   async createBooking(@Req() req, @Body() payload: any) {
-    payload.organizerId = req.user.id; // ensure organizer is current user
+    payload.organizerId = req.user.id; // MUST exist
     return this.bookingsService.createBooking(payload);
   }
+
 
   // ------------------------------
   // Cancel a booking

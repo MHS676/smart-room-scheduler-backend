@@ -20,7 +20,7 @@ export class BookingsService {
     private prisma: PrismaService,
     private events: EventsGateway,
     private redlock: RedlockService,
-  ) {}
+  ) { }
 
   // List all bookings of a user
   async listUserBookings(userId: string, from?: Date, to?: Date) {
@@ -165,7 +165,11 @@ export class BookingsService {
   // Create booking
   async createBooking(payload: any) {
     const decision = await this.findOptimalMeeting(payload);
-    if (!decision.recommendedRoom) return { error: 'no_available_room', alternatives: decision.alternativeOptions };
+
+    if (!decision.recommendedRoom) {
+      const anyRoom = await this.prisma.meetingRoom.findFirst();
+      if (anyRoom) return { recommendedRoom: anyRoom, alternativeOptions: [] };
+    }
 
     const start = decision.suggestedTime;
     const end = addMinutes(start, payload.duration);
@@ -187,22 +191,29 @@ export class BookingsService {
 
         if (conflicting) return null;
 
+        // 🚨 Defensive check
+        if (!payload.organizerId) {
+          throw new Error('Missing organizerId in payload');
+        }
+
         const newBooking = await tx.booking.create({
           data: {
-                        organizer: { connect: { id: payload.organizerId } },
-                        attendees: payload.attendees || [],
-                        duration: payload.duration,
-                        requiredEquipment: payload.requiredEquipment || [],
-                        preferredStart: new Date(payload.preferredStart),
-                        startTime: start,
-                        endTime: end,
-                        flexibility: payload.flexibility || 0,
-                        priority: payload.priority || 'NORMAL',
-                        status: 'SCHEDULED',
-                        room: { connect: { id: decision.recommendedRoom.id } },
-                        cost: decision.recommendedRoom.hourlyRate * (payload.duration / 60),
-                        autoReleaseAt: addMinutes(start, AUTO_RELEASE_MINUTES),
-                        ticket: payload.ticketId ? { connect: { id: payload.ticketId } } : undefined,
+            organizer: { connect: { id: payload.organizerId } },
+            attendees: payload.attendees || [],
+            duration: payload.duration,
+            requiredEquipment: payload.requiredEquipment || [],
+            preferredStart: new Date(payload.preferredStart),
+            startTime: start,
+            endTime: end,
+            flexibility: payload.flexibility || 0,
+            priority: payload.priority || 'NORMAL',
+            status: 'SCHEDULED',
+            room: { connect: { id: decision.recommendedRoom.id } },
+            cost: decision.recommendedRoom.hourlyRate * (payload.duration / 60),
+            autoReleaseAt: addMinutes(start, AUTO_RELEASE_MINUTES),
+            ticket: payload.ticketId
+              ? { connect: { id: payload.ticketId } }
+              : undefined,
           },
         });
 
@@ -212,13 +223,20 @@ export class BookingsService {
       if (!booking) return { error: 'conflict', message: 'Selected room taken, retry' };
 
       this.events.broadcastBookingUpdate({ event: 'created', booking });
-      return { booking, alternatives: decision.alternativeOptions, costOptimization: decision.costOptimization };
+      return {
+        booking,
+        alternatives: decision.alternativeOptions,
+        costOptimization: decision.costOptimization,
+      };
     } finally {
       try {
         await lock.release();
-      } catch {}
+      } catch { }
     }
   }
+
+
+
 
   // Cancel booking
   async cancelBooking(bookingId: string, userId: string) {
@@ -239,13 +257,13 @@ export class BookingsService {
   }
 
   // Release unused bookings
-    async releaseUnusedBookings() {
-        const now = new Date();
-        const toRelease = await this.prisma.booking.findMany({ where: { status: 'SCHEDULED', autoReleaseAt: { lt: now } } });
-        for (const b of toRelease) {
-            await this.prisma.booking.update({ where: { id: b.id }, data: { status: 'RELEASED' } });
-            this.events.broadcastBookingUpdate({ event: 'released', bookingId: b.id });
-        }
-        return { released: toRelease.length };
+  async releaseUnusedBookings() {
+    const now = new Date();
+    const toRelease = await this.prisma.booking.findMany({ where: { status: 'SCHEDULED', autoReleaseAt: { lt: now } } });
+    for (const b of toRelease) {
+      await this.prisma.booking.update({ where: { id: b.id }, data: { status: 'RELEASED' } });
+      this.events.broadcastBookingUpdate({ event: 'released', bookingId: b.id });
     }
+    return { released: toRelease.length };
+  }
 }
