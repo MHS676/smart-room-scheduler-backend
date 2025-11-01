@@ -1,30 +1,30 @@
-import { IsArray, IsEnum, IsInt, IsNotEmpty, IsOptional, IsString, IsISO8601, Min } from 'class-validator';
+// src/bookings/dto/create-booking.dto.ts
+import { IsInt, IsString, IsArray, IsDateString, IsOptional, IsIn, Min } from 'class-validator';
 
 export class CreateBookingDto {
-    @IsOptional()
-    @IsString()
-    organizerId?: string; // will be filled from JWT if missing
+  @IsInt()
+  @Min(1)
+  attendeesCount: number;
 
-    @IsArray()
-    @IsOptional()
-    attendees?: string[];
+  @IsInt()
+  @Min(1)
+  duration: number; // minutes
 
-    @IsInt()
-    @Min(5)
-    duration: number; // minutes
+  @IsArray()
+  requiredEquipment: string[];
 
-    @IsArray()
-    @IsOptional()
-    requiredEquipment?: string[];
+  @IsDateString()
+  preferredStart: string;
 
-    @IsISO8601()
-    preferredStart: string; // ISO
+  @IsInt()
+  flexibility: number;
 
-    @IsInt()
-    @IsOptional()
-    flexibility?: number; // minutes
+  @IsIn(['LOW', 'NORMAL', 'HIGH', 'URGENT'])
+  priority: 'LOW' | 'NORMAL' | 'HIGH' | 'URGENT';
 
-    @IsOptional()
-    @IsEnum(['LOW', 'NORMAL', 'HIGH', 'URGENT'])
-    priority?: 'LOW' | 'NORMAL' | 'HIGH' | 'URGENT';
+  @IsString()
+  roomId: string; // frontend sends meeting room id as roomId
+
+  @IsString()
+  ticketTitle: string;
 }

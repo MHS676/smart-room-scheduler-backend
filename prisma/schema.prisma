@@ -1,3 +1,6 @@
+// --------------------
+// Prisma Configuration
+// --------------------
 generator client {
   provider = "prisma-client-js"
 }
@@ -7,62 +10,81 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
+// --------------------
+// Models
+// --------------------
+
 model User {
-  id        String    @id @default(cuid())
+  id        String   @id @default(cuid())
   name      String
-  email     String    @unique
+  email     String   @unique
   password  String? // nullable for SSO or seeded users
-  role      Role      @default(EMPLOYEE)
-  createdAt DateTime  @default(now())
-  updatedAt DateTime  @updatedAt
-  bookings  Booking[] @relation("OrganizerBookings")
+  role      Role     @default(EMPLOYEE)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // ✅ Relation to Booking
+  bookings Booking[] @relation("OrganizerBookings")
 }
 
 model MeetingRoom {
-  id         String    @id @default(cuid())
-  name       String    @unique
+  id         String   @id @default(cuid())
+  name       String   @unique
   capacity   Int
-  equipment  String[]  @default([])
+  equipment  String[] @default([])
   hourlyRate Float
   location   String
-  bookings   Booking[]
-  createdAt  DateTime  @default(now())
-  updatedAt  DateTime  @updatedAt
-}
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
 
-model Booking {
-  id                String        @id @default(cuid())
-  organizerId       String
-  organizer         User          @relation(fields: [organizerId], references: [id], name: "OrganizerBookings")
-  roomId            String?
-  room              MeetingRoom?  @relation(fields: [roomId], references: [id])
-  attendees         String[]      @default([])
-  duration          Int // minutes
-  requiredEquipment String[]      @default([])
-  preferredStart    DateTime
-  actualStart       DateTime?
-  startTime         DateTime? // scheduled start
-  endTime           DateTime? // scheduled end
-  flexibility       Int // minutes
-  priority          Priority      @default(NORMAL)
-  status            BookingStatus @default(PENDING)
-  cost              Float?
-  createdAt         DateTime      @default(now())
-  updatedAt         DateTime      @updatedAt
-  autoReleaseAt     DateTime?
-  ticketId          String?
-  ticket            Ticket?       @relation(fields: [ticketId], references: [id])
+  // ✅ Relation to Booking
+  bookings Booking[]
 }
 
 model Ticket {
-  id        String    @id @default(uuid())
-  title     String    @unique
+  id        String   @id @default(uuid())
+  title     String   @unique
   price     Float
   quantity  Int
-  createdAt DateTime  @default(now())
-  updatedAt DateTime  @updatedAt
-  bookings  Booking[]
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // ✅ Relation to Booking
+  bookings Booking[]
+
+  @@index([title])
 }
+
+model Booking {
+  id            String  @id @default(cuid())
+  organizerId   String
+  meetingRoomId String
+  ticketId      String? // ✅ relational field to Ticket
+
+  // ✅ Relations
+  organizer   User        @relation("OrganizerBookings", fields: [organizerId], references: [id])
+  meetingRoom MeetingRoom @relation(fields: [meetingRoomId], references: [id])
+  ticket      Ticket?     @relation(fields: [ticketId], references: [id])
+
+  attendeesCount    Int
+  duration          Int
+  requiredEquipment String[]
+  preferredStart    DateTime
+  flexibility       Int
+  priority          Priority
+  ticketTitle       String // ✅ still keeping title for display
+  cost              Float?
+  autoReleaseAt     DateTime?
+  startTime         DateTime?
+  endTime           DateTime?
+  status            BookingStatus @default(SCHEDULED)
+  createdAt         DateTime      @default(now())
+  updatedAt         DateTime      @updatedAt
+}
+
+// --------------------
+// Enums
+// --------------------
 
 enum Role {
   EMPLOYEE
