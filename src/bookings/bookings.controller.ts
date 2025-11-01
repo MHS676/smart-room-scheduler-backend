@@ -22,8 +22,8 @@ export class BookingsController {
     return this.bookingsService.calendarView(new Date(day));
   }
 
-  @Post()
   @UseGuards(JwtAuthGuard)
+  @Post()
   async create(@Req() req, @Body() dto: CreateBookingDto) {
     const userId = req.user?.userId ?? req.user?.id;
     return this.bookingsService.createBooking(userId, dto);

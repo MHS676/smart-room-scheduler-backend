@@ -5,6 +5,7 @@ import { EventsGateway } from '../events/events.gateway';
 import { RedlockService } from '../redis/redis-lock.service';
 import { MailService } from '../email/mail.service';
 import { CreateBookingDto } from './dto/create-booking.dto';
+import { Prisma } from '@prisma/client';
 
 const BUFFER_MINUTES = 15;
 const AUTO_RELEASE_MINUTES = 10;
@@ -12,23 +13,34 @@ const AUTO_RELEASE_MINUTES = 10;
 function addMinutes(d: Date, m: number) {
   return new Date(d.getTime() + m * 60000);
 }
+
 function overlaps(aStart: Date, aEnd: Date, bStart: Date, bEnd: Date) {
   return aStart < bEnd && bStart < aEnd;
 }
 
+// -----------------------------
+// Types
+// -----------------------------
+type AlternativeRoom = {
+  id: string;
+  name: string;
+  capacity: number;
+};
+
 @Injectable()
 export class BookingsService {
-constructor(
-  private prisma: PrismaService,
-  private events: EventsGateway,
-  private redlock: RedlockService,
-  private mailService: MailService, 
-) {}
+  constructor(
+    private prisma: PrismaService,
+    private events: EventsGateway,
+    private redlock: RedlockService,
+    private mailService: MailService,
+  ) {}
 
-
-  // List all bookings of a user (uses organizerId relation)
+  // -----------------------------
+  // List user bookings
+  // -----------------------------
   async listUserBookings(userId: string, from?: Date, to?: Date) {
-    const where: any = { OR: [{ organizerId: userId }] }; // we changed to organizerId only because attendeesCount replaced attendees array
+    const where: any = { OR: [{ organizerId: userId }] };
     if (from && to) where.AND = [{ startTime: { gte: from } }, { endTime: { lte: to } }];
     return this.prisma.booking.findMany({
       where,
@@ -37,7 +49,9 @@ constructor(
     });
   }
 
+  // -----------------------------
   // Calendar view grouped by room
+  // -----------------------------
   async calendarView(day: Date) {
     const start = new Date(day);
     start.setHours(0, 0, 0, 0);
@@ -58,7 +72,9 @@ constructor(
     return grouped;
   }
 
-  // findOptimalMeeting: unchanged logic but adapt to new field names if needed
+  // -----------------------------
+  // Find optimal meeting (alternative suggestions)
+  // -----------------------------
   async findOptimalMeeting(request: any) {
     const needed = request.attendeesCount || 1;
     const allRooms = await this.prisma.meetingRoom.findMany();
@@ -111,7 +127,10 @@ constructor(
         for (const b of existingBookings) {
           if (!b.meetingRoomId || b.meetingRoomId !== room.id) continue;
           const bookedStart = addMinutes(b.startTime || b.preferredStart, -BUFFER_MINUTES);
-          const bookedEnd = addMinutes(b.endTime || addMinutes(b.startTime || b.preferredStart, b.duration || request.duration), BUFFER_MINUTES);
+          const bookedEnd = addMinutes(
+            b.endTime || addMinutes(b.startTime || b.preferredStart, b.duration || request.duration),
+            BUFFER_MINUTES
+          );
           if (overlaps(start, end, bookedStart, bookedEnd)) { conflict = true; break; }
         }
         if (conflict) continue;
@@ -137,7 +156,10 @@ constructor(
           for (const b of existingBookings) {
             if (!b.meetingRoomId || b.meetingRoomId !== room.id) continue;
             const bookedStart = addMinutes(b.startTime || b.preferredStart, -BUFFER_MINUTES);
-            const bookedEnd = addMinutes(b.endTime || addMinutes(b.startTime || b.preferredStart, b.duration || request.duration), BUFFER_MINUTES);
+            const bookedEnd = addMinutes(
+              b.endTime || addMinutes(b.startTime || b.preferredStart, b.duration || request.duration),
+              BUFFER_MINUTES
+            );
             if (overlaps(start, end, bookedStart, bookedEnd)) { conflict = true; break; }
           }
           if (!conflict) { fallback.push({ room, start }); break; }
@@ -151,88 +173,140 @@ constructor(
     return { recommendedRoom: top.room, suggestedTime: top.start, alternativeOptions: alt, costOptimization: top.costOpt };
   }
 
-  // Create booking (uses CreateBookingDto)
+  // -----------------------------
+  // Create booking with alternative suggestions
+  // -----------------------------
   async createBooking(userId: string, dto: CreateBookingDto) {
-    // Input validation is already handled by DTO + controller pipes; service assumes dto is valid
-    return this.prisma.$transaction(async (tx) => {
-      // find meeting room (Prisma model: meetingRoom)
+    const start = new Date(dto.preferredStart);
+    const end = addMinutes(start, dto.duration);
+
+    return this.prisma.$transaction(async (tx: Prisma.TransactionClient) => {
       const room = await tx.meetingRoom.findUnique({ where: { id: dto.roomId } });
       if (!room) throw new BadRequestException('Room not found');
 
-      const start = new Date(dto.preferredStart);
-      const end = new Date(start.getTime() + dto.duration * 60000);
+              let ticketId: string | null = null;
+        if (dto.ticketTitle) {
+            const ticket = await tx.ticket.findFirst({ where: { title: dto.ticketTitle } });
+            if (ticket) ticketId = ticket.id;
+        }
 
       const conflict = await tx.booking.findFirst({
         where: {
           meetingRoomId: dto.roomId,
-          AND: [
-            { startTime: { lte: end } },
-            { endTime: { gte: start } },
-          ],
+          AND: [{ startTime: { lte: end } }, { endTime: { gte: start } }],
           status: { in: ['SCHEDULED', 'PENDING'] },
         },
       });
-      if (conflict) throw new BadRequestException('Time conflict: room already booked.');
 
-      const booking = await tx.booking.create({
-        data: {
-          organizerId: userId,
-          meetingRoomId: dto.roomId,
-          attendeesCount: dto.attendeesCount,
-          duration: dto.duration,
-          requiredEquipment: dto.requiredEquipment,
-          preferredStart: start,
-          flexibility: dto.flexibility,
-          priority: dto.priority,
-          ticketTitle: dto.ticketTitle,
-          startTime: start,
-          endTime: end,
-          status: 'SCHEDULED',
-          autoReleaseAt: addMinutes(start, AUTO_RELEASE_MINUTES),
-          cost: room.hourlyRate * (dto.duration / 60),
-        },
-        include: { organizer: true, meetingRoom: true, ticket: true },
-      });
-
-      // Send confirmation email to organizer (if organizer exists)
-      try {
-        if (booking.organizer?.email) {
-          await this.mailService.sendMail({
-            to: booking.organizer.email,
-            subject: 'Booking Confirmation — Smart Room',
-            html: `<h2>Booking Created</h2>
-                   <p><strong>Room:</strong> ${booking.meetingRoom?.name ?? 'Unknown'}</p>
-                   <p><strong>Start:</strong> ${booking.startTime?.toISOString()}</p>
-                   <p><strong>Duration:</strong> ${booking.duration} minutes</p>
-                   <p><strong>Attendees:</strong> ${booking.attendeesCount}</p>
-                   <p><strong>Ticket:</strong> ${booking.ticket?.title ?? booking.ticketTitle}</p>`,
-          });
-        }
-      } catch (err) {
-        // don't fail booking if email fails; log and continue
-        console.error('Failed to send booking email', err);
+      if (!conflict) {
+        return this.createAndNotify(tx, userId, dto, start, end, room);
       }
 
-      // broadcast event
-      this.events.broadcastBookingUpdate?.({ event: 'created', booking });
-      return booking;
+      // Suggest alternatives
+      const allRooms = await tx.meetingRoom.findMany({ where: { capacity: { gte: dto.attendeesCount } } });
+      const alternativeRooms = allRooms.filter(r => r.id !== dto.roomId);
+
+      const availableAlternatives: AlternativeRoom[] = [];
+      for (const alt of alternativeRooms) {
+        const altConflict = await tx.booking.findFirst({
+          where: {
+            meetingRoomId: alt.id,
+            AND: [{ startTime: { lte: end } }, { endTime: { gte: start } }],
+            status: { in: ['SCHEDULED', 'PENDING'] },
+          },
+        });
+        if (!altConflict) {
+          availableAlternatives.push({ id: alt.id, name: alt.name, capacity: alt.capacity });
+        }
+      }
+
+      if (!availableAlternatives.length) {
+        throw new BadRequestException('Time conflict: room already booked and no alternatives available.');
+      }
+
+      return { message: 'Selected room is booked. Available alternatives:', alternatives: availableAlternatives };
     });
   }
 
+  async getAllBookings() {
+    return this.prisma.booking.findMany({
+      include: {
+        organizer: true,
+        meetingRoom: true,
+        ticket: true,
+      },
+    });
+  }
 
+  // -----------------------------
+  // Create and notify
+  // -----------------------------
+  private async createAndNotify(
+    tx: Prisma.TransactionClient,
+    userId: string,
+    dto: CreateBookingDto,
+    start: Date,
+    end: Date,
+    room: { id: string; name: string; hourlyRate: number },
+  ) {
+    const booking = await tx.booking.create({
+      data: {
+        organizerId: userId,
+        meetingRoomId: room.id,
+        attendeesCount: dto.attendeesCount,
+        duration: dto.duration,
+        requiredEquipment: dto.requiredEquipment,
+        preferredStart: start,
+        flexibility: dto.flexibility,
+        priority: dto.priority,
+        ticketTitle: dto.ticketTitle,
+        ticketId: dto.ticketTitle,
+        startTime: start,
+        endTime: end,
+        status: 'SCHEDULED',
+        autoReleaseAt: addMinutes(start, AUTO_RELEASE_MINUTES),
+        cost: room.hourlyRate * (dto.duration / 60),
+      },
+      include: { organizer: true, meetingRoom: true, ticket: true },
+    });
 
+    try {
+      if (booking.organizer?.email) {
+        await this.mailService.sendMail({
+          to: booking.organizer.email,
+          subject: 'Booking Confirmation — Smart Room',
+          html: `<h2>Booking Created</h2>
+                 <p><strong>Room:</strong> ${booking.meetingRoom?.name ?? 'Unknown'}</p>
+                 <p><strong>Start:</strong> ${booking.startTime?.toISOString()}</p>
+                 <p><strong>Duration:</strong> ${booking.duration} minutes</p>
+                 <p><strong>Attendees:</strong> ${booking.attendeesCount}</p>
+                 <p><strong>Ticket:</strong> ${booking.ticketTitle}</p>`,
+        });
+      }
+    } catch (err) {
+      console.error('Failed to send booking email', err);
+    }
 
+    this.events.broadcastBookingUpdate?.({ event: 'created', booking });
+    return booking;
+  }
+
+  // -----------------------------
   // Cancel booking
+  // -----------------------------
   async cancelBooking(bookingId: string, userId: string) {
     const booking = await this.prisma.booking.findUnique({ where: { id: bookingId } });
     if (!booking) throw new NotFoundException('Booking not found');
     if (booking.organizerId !== userId) throw new ForbiddenException('Only organizer can cancel');
+
     const updated = await this.prisma.booking.update({ where: { id: bookingId }, data: { status: 'CANCELLED' } });
     this.events.broadcastBookingUpdate?.({ event: 'cancelled', booking: updated });
     return updated;
   }
 
+  // -----------------------------
   // Check-in
+  // -----------------------------
   async checkIn(bookingId: string, userId: string) {
     const booking = await this.prisma.booking.findUnique({ where: { id: bookingId } });
     if (!booking) throw new NotFoundException('Booking not found');
@@ -244,7 +318,9 @@ constructor(
     return updated;
   }
 
+  // -----------------------------
   // Release unused bookings
+  // -----------------------------
   async releaseUnusedBookings() {
     const now = new Date();
     const toRelease = await this.prisma.booking.findMany({ where: { status: 'SCHEDULED', autoReleaseAt: { lt: now } } });
