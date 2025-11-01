@@ -1,4 +1,4 @@
-// src/bookings/bookings.controller.ts
+
 import { Controller, Get, Post, Body, Param, Query, Patch, UseGuards, Req } from '@nestjs/common';
 import { BookingsService } from './bookings.service';
 import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';

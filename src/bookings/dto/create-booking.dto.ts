@@ -1,4 +1,3 @@
-// src/bookings/dto/create-booking.dto.ts
 import { IsInt, IsString, IsArray, IsDateString, IsOptional, IsIn, Min } from 'class-validator';
 
 export class CreateBookingDto {
@@ -8,7 +7,7 @@ export class CreateBookingDto {
 
   @IsInt()
   @Min(1)
-  duration: number; // minutes
+  duration: number;
 
   @IsArray()
   requiredEquipment: string[];
@@ -22,9 +21,15 @@ export class CreateBookingDto {
   @IsIn(['LOW', 'NORMAL', 'HIGH', 'URGENT'])
   priority: 'LOW' | 'NORMAL' | 'HIGH' | 'URGENT';
 
+  @IsOptional()
   @IsString()
-  roomName: string; // frontend sends meeting room id as roomId
+  roomId?: string;
 
+  @IsOptional()
   @IsString()
-  ticketTitle: string;
+  roomName?: string;
+
+  @IsOptional()
+  @IsString()
+  ticketTitle?: string;
 }

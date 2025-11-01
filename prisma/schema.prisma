@@ -1,6 +1,3 @@
-// --------------------
-// Prisma Configuration
-// --------------------
 generator client {
   provider = "prisma-client-js"
 }
@@ -10,20 +7,15 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
-// --------------------
-// Models
-// --------------------
-
 model User {
   id        String   @id @default(cuid())
   name      String
   email     String   @unique
-  password  String? // nullable for SSO or seeded users
+  password  String?
   role      Role     @default(EMPLOYEE)
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  // ✅ Relation to Booking
   bookings Booking[] @relation("OrganizerBookings")
 }
 
@@ -37,7 +29,6 @@ model MeetingRoom {
   createdAt  DateTime @default(now())
   updatedAt  DateTime @updatedAt
 
-  // ✅ Relation to Booking
   bookings Booking[]
 }
 
@@ -49,7 +40,6 @@ model Ticket {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  // ✅ Relation to Booking
   bookings Booking[]
 
   @@index([title])
@@ -59,9 +49,8 @@ model Booking {
   id            String  @id @default(cuid())
   organizerId   String
   meetingRoomId String
-  ticketId      String? // ✅ relational field to Ticket
+  ticketId      String?
 
-  // ✅ Relations
   organizer   User        @relation("OrganizerBookings", fields: [organizerId], references: [id])
   meetingRoom MeetingRoom @relation(fields: [meetingRoomId], references: [id])
   ticket      Ticket?     @relation(fields: [ticketId], references: [id])
@@ -72,7 +61,7 @@ model Booking {
   preferredStart    DateTime
   flexibility       Int
   priority          Priority
-  ticketTitle       String // ✅ still keeping title for display
+  ticketTitle       String
   cost              Float?
   autoReleaseAt     DateTime?
   startTime         DateTime?
@@ -81,10 +70,6 @@ model Booking {
   createdAt         DateTime      @default(now())
   updatedAt         DateTime      @updatedAt
 }
-
-// --------------------
-// Enums
-// --------------------
 
 enum Role {
   EMPLOYEE
@@ -104,6 +89,5 @@ enum BookingStatus {
   SCHEDULED
   CANCELLED
   RELEASED
-  COMPLETED
-  NO_SHOW
+  PREEMPTED
 }

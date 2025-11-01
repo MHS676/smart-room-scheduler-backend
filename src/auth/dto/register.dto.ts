@@ -7,7 +7,6 @@ export class RegisterDto {
   @IsEmail()
   email: string;
 
-  // optional: enforce min length
   @MinLength(8)
   password: string;
 }

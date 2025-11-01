@@ -19,7 +19,6 @@ export class RedisLockInterceptor implements NestInterceptor {
         if (!field) return next.handle();
 
         const req = context.switchToHttp().getRequest();
-        // try body, params, query
         const key = req.body?.[field] ?? req.params?.[field] ?? req.query?.[field];
         if (!key) throw new BadRequestException(`Missing lock key field "${field}"`);
 
@@ -32,7 +31,6 @@ export class RedisLockInterceptor implements NestInterceptor {
                         try {
                             await lock.release();
                         } catch (e) {
-                            // ignore release errors
                         }
                         return result;
                     }),
