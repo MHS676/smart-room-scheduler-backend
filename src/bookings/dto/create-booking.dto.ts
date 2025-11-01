@@ -23,7 +23,7 @@ export class CreateBookingDto {
   priority: 'LOW' | 'NORMAL' | 'HIGH' | 'URGENT';
 
   @IsString()
-  roomId: string; // frontend sends meeting room id as roomId
+  roomName: string; // frontend sends meeting room id as roomId
 
   @IsString()
   ticketTitle: string;
