@@ -23,12 +23,12 @@ export class BookingsController {
       // Default to today if no date provided
       return this.bookingsService.calendarView(new Date());
     }
-    
+
     const parsedDate = new Date(day);
     if (isNaN(parsedDate.getTime())) {
       throw new BadRequestException('Invalid date format. Please use ISO format (YYYY-MM-DD)');
     }
-    
+
     return this.bookingsService.calendarView(parsedDate);
   }
 
