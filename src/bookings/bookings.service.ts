@@ -64,8 +64,16 @@ export class BookingsService {
 
 
   async calendarView(day: Date) {
+    // Ensure we have a valid date
+    if (!(day instanceof Date) || isNaN(day.getTime())) {
+      throw new BadRequestException('Invalid date provided to calendar view');
+    }
+
+    // Create start of day (midnight)
     const start = new Date(day);
     start.setHours(0, 0, 0, 0);
+
+    // Create end of day (next day midnight)
     const end = new Date(start);
     end.setDate(start.getDate() + 1);
 

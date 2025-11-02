@@ -1,5 +1,5 @@
 
-import { Controller, Get, Post, Body, Param, Query, Patch, UseGuards, Req } from '@nestjs/common';
+import { Controller, Get, Post, Body, Param, Query, Patch, UseGuards, Req, BadRequestException } from '@nestjs/common';
 import { BookingsService } from './bookings.service';
 import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
 import { RolesGuard } from '../common/guards/roles.guard';
@@ -19,7 +19,17 @@ export class BookingsController {
 
   @Get('calendar')
   async calendarView(@Query('day') day: string) {
-    return this.bookingsService.calendarView(new Date(day));
+    if (!day) {
+      // Default to today if no date provided
+      return this.bookingsService.calendarView(new Date());
+    }
+    
+    const parsedDate = new Date(day);
+    if (isNaN(parsedDate.getTime())) {
+      throw new BadRequestException('Invalid date format. Please use ISO format (YYYY-MM-DD)');
+    }
+    
+    return this.bookingsService.calendarView(parsedDate);
   }
 
   @UseGuards(JwtAuthGuard)
